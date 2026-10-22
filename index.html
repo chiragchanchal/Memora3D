@@ -908,16 +908,25 @@ AFRAME.registerComponent('interactable', {
   }
 });
 
-// ===== smooth-move (left thumbstick, head-yaw relative, Y-locked) =====
+// ===== smooth-move (thumbstick, head-yaw relative, Y-locked) =====
+// Listens to BOTH thumbstickmoved and raw axismove: some runtimes never emit
+// thumbstickmoved (unrecognized gamepad, hand-tracking switch), but
+// tracked-controls always emits axismove with the stick in axes[2..3].
 AFRAME.registerComponent('smooth-move', {
+  schema: { strafe: { default: true } }, // right hand: strafe off, its X stays snap-turn
   init() {
     this.ax = 0;
     this.ay = 0;
     this.rig = document.getElementById('rig');
     this.head = document.getElementById('head');
-    this.el.addEventListener('thumbstickmoved', (e) => {
-      this.ax = e.detail.x || 0;
-      this.ay = e.detail.y || 0;
+    const onStick = (x, y) => {
+      this.ax = this.data.strafe ? (x || 0) : 0;
+      this.ay = y || 0;
+    };
+    this.el.addEventListener('thumbstickmoved', (e) => onStick(e.detail.x, e.detail.y));
+    this.el.addEventListener('axismove', (e) => {
+      const a = e.detail.axis;
+      if (a && a.length >= 4) onStick(a[2], a[3]);
     });
   },
   tick(t, dtms) {
@@ -940,12 +949,16 @@ AFRAME.registerComponent('snap-turn', {
     this.nextOk = 0;
     this.rig = document.getElementById('rig');
     this.head = document.getElementById('head');
-    this.el.addEventListener('thumbstickmoved', (e) => {
-      const x = e.detail.x || 0;
+    const onStickX = (x) => {
       const now = performance.now();
       if (now < this.nextOk) return; // 300 ms cooldown
       if (x > 0.6) { this.turn(-1); this.nextOk = now + 300; }
       else if (x < -0.6) { this.turn(1); this.nextOk = now + 300; }
+    };
+    this.el.addEventListener('thumbstickmoved', (e) => onStickX(e.detail.x || 0));
+    this.el.addEventListener('axismove', (e) => { // same fallback as smooth-move
+      const a = e.detail.axis;
+      if (a && a.length >= 3) onStickX(a[2] || 0);
     });
   },
   turn(dir) {
@@ -999,6 +1012,9 @@ AFRAME.registerComponent('teleport', {
     if (left) {
       left.addEventListener('gripdown', () => this.startAim(left));
       left.addEventListener('gripup', () => this.confirm());
+      // some runtimes report the grip as "squeeze" instead of "grip"
+      left.addEventListener('squeezedown', () => this.startAim(left));
+      left.addEventListener('squeezeup', () => this.confirm());
     }
   },
   startAim(hand) {
@@ -1312,8 +1328,10 @@ AFRAME.registerComponent('desktop-controls', {
               wasd-controls="enabled: false" desktop-controls>
       <a-cursor id="cursor" raycaster="objects: .clickable; far: 8" fuse="false" color="#FFD9A0"></a-cursor>
     </a-entity>
+    <!-- left stick: move + strafe. right stick: forward/back + snap-turn left/right.
+         right stick press / left grip: teleport -->
     <a-entity id="leftHand" meta-touch-controls="hand: left" smooth-move></a-entity>
-    <a-entity id="rightHand" laser-controls="hand: right"
+    <a-entity id="rightHand" laser-controls="hand: right" smooth-move="strafe: false"
               raycaster="objects: .clickable; far: 8" snap-turn teleport trigger-select laser-dot></a-entity>
   </a-entity>
 </a-scene>
