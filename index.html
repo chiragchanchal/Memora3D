@@ -13,7 +13,9 @@
 <script>
 /* ============================================================
    Reliving Childhood Nostalgia — single-file WebXR scene
-   All textures: Canvas 2D. All audio: Web Audio. No assets.
+   A memory box of a room, open on one side to an endless
+   golden-hour meadow. All textures: Canvas 2D. All audio:
+   Web Audio. No assets.
    ============================================================ */
 const THREE = AFRAME.THREE;
 
@@ -178,22 +180,58 @@ const PAINTERS = {
     g.fillStyle = '#D9A441';
     g.beginPath(); g.arc(cx, cy, 12, 0, 7); g.fill();
   },
-  sky(g, w, h) {
-    const grad = g.createLinearGradient(0, 0, 0, h);
-    grad.addColorStop(0, '#FFC9A3');
-    grad.addColorStop(0.55, '#FF9A5C');
-    grad.addColorStop(1, '#E85D1F');
-    g.fillStyle = grad; g.fillRect(0, 0, w, h);
-    const sun = g.createRadialGradient(128, 170, 4, 128, 170, 78);
-    sun.addColorStop(0, 'rgba(255,243,192,1)');
-    sun.addColorStop(0.5, 'rgba(255,200,120,0.55)');
+  sky360(g, w, h) { // 2048x1024 equirect: golden hour in every direction, sun low at -z
+    const TAU = Math.PI * 2;
+    const hy = 512; // horizon row
+    const grad = g.createLinearGradient(0, 0, 0, hy);
+    grad.addColorStop(0, '#7FA3C8');
+    grad.addColorStop(0.4, '#D9BFA0');
+    grad.addColorStop(0.75, '#FFB77A');
+    grad.addColorStop(1, '#FF9A5C');
+    g.fillStyle = grad; g.fillRect(0, 0, w, hy + 4);
+    // low sun + wide glow (u = 0.75 faces -z on a three.js sphere: through the window)
+    const sx = w * 0.75, sy = 452;
+    const sun = g.createRadialGradient(sx, sy, 10, sx, sy, 340);
+    sun.addColorStop(0, 'rgba(255,240,190,0.9)');
+    sun.addColorStop(0.35, 'rgba(255,196,120,0.4)');
     sun.addColorStop(1, 'rgba(255,180,90,0)');
-    g.fillStyle = sun; g.fillRect(0, 0, w, h);
-    g.fillStyle = '#FFE9B0';
-    g.beginPath(); g.arc(128, 170, 34, 0, 7); g.fill();
-    g.fillStyle = 'rgba(255,220,190,0.35)';
-    g.beginPath(); g.ellipse(70, 70, 60, 8, 0, 0, 7); g.fill();
-    g.beginPath(); g.ellipse(190, 110, 50, 6, 0, 0, 7); g.fill();
+    g.fillStyle = sun; g.fillRect(sx - 340, sy - 340, 680, 680);
+    g.fillStyle = '#FFF3C8';
+    g.beginPath(); g.arc(sx, sy, 38, 0, 7); g.fill();
+    // long warm cloud streaks
+    for (let i = 0; i < 14; i++) {
+      const cx = Math.random() * w, cy = 150 + Math.random() * 280;
+      const cw = 90 + Math.random() * 220, ch = 5 + Math.random() * 9;
+      g.fillStyle = 'rgba(255,' + (200 + Math.random() * 40 | 0) + ',' + (170 + Math.random() * 40 | 0) + ',' +
+        (0.22 + Math.random() * 0.3).toFixed(2) + ')';
+      g.beginPath(); g.ellipse(cx, cy, cw, ch, 0, 0, 7); g.fill();
+      g.beginPath(); g.ellipse(cx + cw * 0.4, cy + ch, cw * 0.6, ch * 0.8, 0, 0, 7); g.fill();
+    }
+    // periodic hill rings: seamless where the texture wraps
+    g.fillStyle = 'rgba(122,102,78,0.9)';
+    g.beginPath(); g.moveTo(0, hy + 6);
+    for (let x = 0; x <= w; x += 8) {
+      const a = x / w * TAU;
+      g.lineTo(x, hy - 10 - Math.sin(a * 3) * 12 - Math.sin(a * 7 + 1.3) * 7);
+    }
+    g.lineTo(w, hy + 6); g.closePath(); g.fill();
+    g.fillStyle = '#46543F';
+    g.beginPath(); g.moveTo(0, hy + 8);
+    for (let x = 0; x <= w; x += 8) {
+      const a = x / w * TAU;
+      g.lineTo(x, hy - 2 - (Math.sin(a * 5 + 2) + 0.6 * Math.sin(a * 11)) * 7);
+    }
+    g.lineTo(w, hy + 8); g.closePath(); g.fill();
+    // below horizon: meadow (mostly hidden behind the ground plane)
+    const mg = g.createLinearGradient(0, hy, 0, h);
+    mg.addColorStop(0, '#5E7A4A'); mg.addColorStop(1, '#2E3A26');
+    g.fillStyle = mg; g.fillRect(0, hy + 6, w, h - hy);
+    // birds near the sun
+    g.strokeStyle = 'rgba(60,50,60,0.65)'; g.lineWidth = 3;
+    [[sx - 220, 300], [sx - 170, 270], [sx + 260, 320]].forEach(p => {
+      g.beginPath(); g.moveTo(p[0] - 9, p[1]); g.quadraticCurveTo(p[0], p[1] - 8, p[0] + 1, p[1]);
+      g.quadraticCurveTo(p[0] + 2, p[1] - 8, p[0] + 11, p[1]); g.stroke();
+    });
   },
   grass(g, w, h) {
     g.fillStyle = '#5E7A4A'; g.fillRect(0, 0, w, h);
@@ -219,56 +257,42 @@ const PAINTERS = {
       g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 3, y - 2 - Math.random() * 3); g.stroke();
     }
   },
-  pano(g, w, h) { // 1024x512 golden-hour panorama: sky, sun, clouds, hills, tree line, meadow
-    const hy = 300; // horizon
-    const grad = g.createLinearGradient(0, 0, 0, hy);
-    grad.addColorStop(0, '#BFD9E8');
-    grad.addColorStop(0.55, '#FFD9A8');
-    grad.addColorStop(1, '#FF9A5C');
-    g.fillStyle = grad; g.fillRect(0, 0, w, hy);
-    const sun = g.createRadialGradient(700, 190, 6, 700, 190, 150);
-    sun.addColorStop(0, 'rgba(255,243,192,0.95)');
-    sun.addColorStop(0.4, 'rgba(255,200,120,0.45)');
-    sun.addColorStop(1, 'rgba(255,180,90,0)');
-    g.fillStyle = sun; g.fillRect(520, 10, 360, 330);
-    g.fillStyle = '#FFF0BC'; g.beginPath(); g.arc(700, 190, 34, 0, 7); g.fill();
-    g.fillStyle = 'rgba(255,236,214,0.55)';
-    const cloud = (x, y, s) => {
-      g.beginPath();
-      g.ellipse(x, y, 62 * s, 12 * s, 0, 0, 7);
-      g.ellipse(x + 40 * s, y + 5 * s, 44 * s, 9 * s, 0, 0, 7);
-      g.ellipse(x - 46 * s, y + 6 * s, 38 * s, 8 * s, 0, 0, 7);
-      g.fill();
-    };
-    cloud(180, 90, 1.1); cloud(520, 130, 0.8); cloud(860, 70, 1.3); cloud(360, 60, 0.6);
-    // hazy far hills
-    g.fillStyle = 'rgba(198,164,132,0.85)';
-    g.beginPath(); g.moveTo(0, hy);
-    for (let x = 0; x <= w; x += 64) g.lineTo(x, hy - 26 - Math.sin(x * 0.011) * 20 - Math.sin(x * 0.004) * 12);
-    g.lineTo(w, hy); g.closePath(); g.fill();
-    // near green hills
-    g.fillStyle = '#6E8556';
-    g.beginPath(); g.moveTo(0, hy + 30);
-    for (let x = 0; x <= w; x += 64) g.lineTo(x, hy - 4 - Math.sin(x * 0.008 + 2) * 26);
-    g.lineTo(w, hy + 30); g.closePath(); g.fill();
-    // tree line sitting on the near hills
-    g.fillStyle = '#3E5A45';
-    for (let x = 8; x < w; x += 14 + Math.random() * 22) {
-      const th = 12 + Math.random() * 22;
-      const base = hy - 4 - Math.sin(x * 0.008 + 2) * 26;
-      g.beginPath(); g.arc(x, base - th * 0.5, th * 0.5, 0, 7); g.fill();
-      g.fillRect(x - 1.5, base - th * 0.4, 3, th * 0.5);
+  dirt(g, w, h) { // soft-edged footpath decal: alpha fades toward the sides
+    g.clearRect(0, 0, w, h);
+    for (let i = 0; i < 90; i++) {
+      const x = w * 0.5 + (Math.random() - 0.5) * w * 0.8;
+      const y = Math.random() * h;
+      const r = 18 + Math.random() * 46;
+      const edge = Math.abs(x - w / 2) / (w / 2);
+      const rg = g.createRadialGradient(x, y, 0, x, y, r);
+      rg.addColorStop(0, 'rgba(139,94,60,' + (0.5 * (1 - edge * 0.8)).toFixed(3) + ')');
+      rg.addColorStop(1, 'rgba(139,94,60,0)');
+      g.fillStyle = rg;
+      g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
     }
-    // meadow foreground
-    const mg = g.createLinearGradient(0, hy + 24, 0, h);
-    mg.addColorStop(0, '#7A9158'); mg.addColorStop(1, '#5E7A4A');
-    g.fillStyle = mg; g.fillRect(0, hy + 24, w, h - hy - 24);
-    // distant birds
-    g.strokeStyle = 'rgba(60,50,60,0.7)'; g.lineWidth = 2;
-    [[300, 120], [330, 105], [640, 90], [920, 140]].forEach(p => {
-      g.beginPath(); g.moveTo(p[0] - 6, p[1]); g.quadraticCurveTo(p[0], p[1] - 6, p[0] + 1, p[1]);
-      g.quadraticCurveTo(p[0] + 2, p[1] - 6, p[0] + 8, p[1]); g.stroke();
-    });
+    for (let i = 0; i < 700; i++) {
+      const x = w * 0.5 + (Math.random() - 0.5) * w * 0.75;
+      const edge = Math.abs(x - w / 2) / (w / 2);
+      g.fillStyle = 'rgba(' + (Math.random() < 0.5 ? '90,60,36' : '170,128,96') + ',' +
+        ((0.25 + Math.random() * 0.3) * (1 - edge * 0.85)).toFixed(3) + ')';
+      g.fillRect(x, Math.random() * h, 2, 2);
+    }
+  },
+  tuft(g, w, h) { // transparent grass-blade cluster for instanced meadow tufts
+    g.clearRect(0, 0, w, h);
+    for (let i = 0; i < 22; i++) {
+      const x0 = w * 0.5 + (Math.random() - 0.5) * w * 0.7;
+      const sway = (Math.random() - 0.5) * 30;
+      const hh = h * (0.45 + Math.random() * 0.55);
+      g.strokeStyle = Math.random() < 0.7
+        ? 'rgba(' + (86 + Math.random() * 40 | 0) + ',' + (122 + Math.random() * 40 | 0) + ',58,0.95)'
+        : 'rgba(196,186,120,0.9)'; // sun-dried tips
+      g.lineWidth = 2 + Math.random() * 2.5;
+      g.beginPath();
+      g.moveTo(x0, h);
+      g.quadraticCurveTo(x0 + sway * 0.3, h - hh * 0.6, x0 + sway, h - hh);
+      g.stroke();
+    }
   },
   tree(g, w, h) { // transparent flat tree billboard
     g.clearRect(0, 0, w, h);
@@ -365,18 +389,17 @@ AFRAME.registerComponent('canvas-texture', {
       const key = t + '|' + this.data.repeat + '|' + this.data.repeatY;
       if (!TEX_CACHE[key]) {
         const painter = PAINTERS[t];
-        const cw = t === 'pano' ? 1024 : (t.indexOf('poster') === 0 ? 256 : 512);
-        const ch = t === 'pano' ? 512 : (t.indexOf('poster') === 0 ? 320 : 512);
+        const cw = t === 'sky360' ? 2048 : (t.indexOf('poster') === 0 ? 256 : 512);
+        const ch = t === 'sky360' ? 1024 : (t.indexOf('poster') === 0 ? 320 : 512);
         TEX_CACHE[key] = toTex(makeCanvas(cw, ch, painter), this.data.repeat || 0, this.data.repeatY || 0);
       }
       this.tex = TEX_CACHE[key];
     }
-    if (t === 'sky' || t === 'pano' || t === 'grass' || t === 'tree' || t.indexOf('poster') === 0) {
-      // unlit basic material: the outdoors stays bright like real daylight
-      const opts = { map: this.tex };
-      if (t === 'tree') { opts.transparent = true; opts.alphaTest = 0.45; opts.side = THREE.DoubleSide; }
-      mesh.material = new THREE.MeshBasicMaterial(opts);
+    if (t === 'sky360' || t.indexOf('poster') === 0) {
+      // unlit basic material: sky stays bright like real daylight, posters glow gently
+      mesh.material = new THREE.MeshBasicMaterial({ map: this.tex });
       mesh.material.toneMapped = (t.indexOf('poster') === 0);
+      mesh.material.fog = (t !== 'sky360'); // the sky dome must ignore the haze
     } else {
       mesh.material.map = this.tex;
       mesh.material.color.set('#ffffff');
@@ -542,10 +565,15 @@ AFRAME.registerComponent('crt-static', {
 
 // ===== dust-motes: ONE THREE.Points cloud drifting in the light shaft =====
 AFRAME.registerComponent('dust-motes', {
+  schema: {
+    n: { default: 120 },
+    bx: { default: 2.4 }, by: { default: 2.0 }, bz: { default: 1.4 },
+    size: { default: 0.035 }, color: { default: '#FFD9A0' }, opacity: { default: 0.5 }
+  },
   init() {
-    const N = 120;
+    const N = this.data.n;
     this.n = N;
-    this.bounds = { x: 2.4, y: 2.0, z: 1.4 };
+    this.bounds = { x: this.data.bx, y: this.data.by, z: this.data.bz };
     const pos = new Float32Array(N * 3);
     this.vel = new Float32Array(N * 3);
     for (let i = 0; i < N; i++) {
@@ -567,13 +595,13 @@ AFRAME.registerComponent('dust-motes', {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this.posAttr = geo.getAttribute('position');
     const mat = new THREE.PointsMaterial({
-      size: 0.035,
+      size: this.data.size,
       map: toTex(sprite, 0),
       transparent: true,
-      opacity: 0.5,
+      opacity: this.data.opacity,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
-      color: 0xFFD9A0,
+      color: this.data.color,
       sizeAttenuation: true
     });
     const points = new THREE.Points(geo, mat);
@@ -622,6 +650,83 @@ AFRAME.registerComponent('books', {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     this.el.setObject3D('books', mesh);
+  }
+});
+
+// ===== trees: crossed-plane billboards, whole forest in 2 draw calls =====
+AFRAME.registerComponent('trees', {
+  init() {
+    const spots = [];
+    let guard = 0;
+    while (spots.length < 26 && guard++ < 400) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 8 + Math.random() * 55;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (Math.abs(x) < 5.5 && Math.abs(z) < 5.5) continue; // keep the house clear
+      spots.push([x, z]);
+    }
+    const tex = toTex(makeCanvas(512, 512, PAINTERS.tree), 0);
+    const geo = new THREE.PlaneGeometry(3, 4);
+    geo.translate(0, 2, 0); // base sits on the ground
+    const mat = new THREE.MeshLambertMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide });
+    const meshA = new THREE.InstancedMesh(geo, mat, spots.length);
+    const meshB = new THREE.InstancedMesh(geo, mat, spots.length);
+    const dummy = new THREE.Object3D();
+    spots.forEach((s, i) => {
+      const rot = Math.random() * Math.PI;
+      dummy.position.set(s[0], 0, s[1]);
+      dummy.scale.setScalar(0.8 + Math.random() * 1.1);
+      dummy.rotation.set(0, rot, 0);
+      dummy.updateMatrix();
+      meshA.setMatrixAt(i, dummy.matrix);
+      dummy.rotation.set(0, rot + Math.PI / 2, 0);
+      dummy.updateMatrix();
+      meshB.setMatrixAt(i, dummy.matrix);
+    });
+    meshA.instanceMatrix.needsUpdate = true;
+    meshB.instanceMatrix.needsUpdate = true;
+    this.el.setObject3D('treesA', meshA);
+    this.el.setObject3D('treesB', meshB);
+  }
+});
+
+// ===== meadow: instanced grass tufts near the house, 2 draw calls =====
+AFRAME.registerComponent('meadow', {
+  init() {
+    const spots = [];
+    let guard = 0;
+    while (spots.length < 170 && guard++ < 1200) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 4.2 + Math.random() * 15;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (Math.abs(x) < 4.2 && Math.abs(z) < 6.4) continue; // house + deck footprint
+      spots.push([x, z]);
+    }
+    const tex = toTex(makeCanvas(128, 128, PAINTERS.tuft), 0);
+    const geo = new THREE.PlaneGeometry(0.5, 0.35);
+    geo.translate(0, 0.175, 0);
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, alphaTest: 0.35, side: THREE.DoubleSide,
+      color: 0xE8D9A8, toneMapped: false // sun-warmed blades glow a little at dusk
+    });
+    const meshA = new THREE.InstancedMesh(geo, mat, spots.length);
+    const meshB = new THREE.InstancedMesh(geo, mat, spots.length);
+    const dummy = new THREE.Object3D();
+    spots.forEach((s, i) => {
+      const rot = Math.random() * Math.PI;
+      dummy.position.set(s[0], 0, s[1]);
+      dummy.scale.setScalar(0.7 + Math.random() * 1.0);
+      dummy.rotation.set(0, rot, 0);
+      dummy.updateMatrix();
+      meshA.setMatrixAt(i, dummy.matrix);
+      dummy.rotation.set(0, rot + Math.PI / 2, 0);
+      dummy.updateMatrix();
+      meshB.setMatrixAt(i, dummy.matrix);
+    });
+    meshA.instanceMatrix.needsUpdate = true;
+    meshB.instanceMatrix.needsUpdate = true;
+    this.el.setObject3D('tuftsA', meshA);
+    this.el.setObject3D('tuftsB', meshB);
   }
 });
 
@@ -947,7 +1052,7 @@ AFRAME.registerComponent('teleport', {
     if (V2.y < -0.05) {
       const tt = -V1.y / V2.y;
       V3.copy(V1).addScaledVector(V2, tt);
-      if (Math.abs(V3.x) <= 3.15 && Math.abs(V3.z) <= 3.15) { // 0.35 m wall margin
+      if (Math.abs(V3.x) <= 55 && Math.abs(V3.z) <= 55) { // anywhere in the meadow
         this.lastValid = true;
         this.target.copy(V3);
       }
@@ -1000,12 +1105,12 @@ AFRAME.registerComponent('laser-dot', {
   }
 });
 
-// ===== room-bounds: clamp player every frame =====
+// ===== world-bounds: clamp player to the meadow (was the room) =====
 AFRAME.registerComponent('room-bounds', {
   init() { this.head = document.getElementById('head'); },
   tick() {
     this.head.object3D.getWorldPosition(V1);
-    const cx = clampNum(V1.x, -3.3, 3.3), cz = clampNum(V1.z, -3.3, 3.3);
+    const cx = clampNum(V1.x, -58, 58), cz = clampNum(V1.z, -58, 58);
     if (cx !== V1.x || cz !== V1.z) {
       const rig = this.el.object3D;
       rig.position.x += cx - V1.x;
@@ -1046,37 +1151,43 @@ AFRAME.registerComponent('desktop-controls', {
 <a-scene audio-synth
          renderer="antialias: true; colorManagement: true; foveationLevel: 2"
          vr-mode-ui="enabled: true"
-         background="color: #1a1410">
+         fog="type: exponential; color: #F0AA6E; density: 0.016"
+         background="color: #F0AA6E">
   <!-- perf toggle: add the word  stats  to the <a-scene> tag above to show the FPS overlay -->
 
   <!-- LIGHTS (3 max, no shadows) -->
   <a-light type="ambient" color="#FFD9A0" intensity="0.45"></a-light>
-  <a-light type="directional" color="#FFC978" intensity="0.9" position="1.2 2.4 -2.6"></a-light>
+  <a-light type="directional" color="#FFB46B" intensity="1.0" position="-2.6 1.9 -2.8"></a-light>
   <a-light type="point" color="#FFD9A0" intensity="0.5" distance="6" position="2.85 1.2 -1.55"></a-light>
 
   <!-- ROOM SHELL: 7x7 m, 3 m ceiling -->
   <a-plane rotation="-90 0 0" width="7" height="7" position="0 0 0"
            canvas-texture="type: floor; repeat: 3" material="roughness: 0.9; metalness: 0"></a-plane>
+  <!-- repeat is sized per segment (tile = 3.5 x 3 m) so texture density never breaks;
+       side: double makes the house read from outside too -->
   <a-plane rotation="90 0 0" width="7" height="7" position="0 3 0"
-           canvas-texture="type: wall; repeat: 1; repeatY: 1" material="roughness: 1"></a-plane>
+           canvas-texture="type: wall; repeat: 2" material="roughness: 1; side: double"></a-plane>
   <!-- far wall: 4 segments around a real 3.2 x 1.8 m picture-window opening -->
   <a-plane width="1.9" height="3" position="-2.55 1.5 -3.5"
-           canvas-texture="type: wall; repeat: 2; repeatY: 1" material="roughness: 1"></a-plane>
+           canvas-texture="type: wall; repeat: 0.54; repeatY: 1" material="roughness: 1; side: double"></a-plane>
   <a-plane width="1.9" height="3" position="2.55 1.5 -3.5"
-           canvas-texture="type: wall; repeat: 2; repeatY: 1" material="roughness: 1"></a-plane>
+           canvas-texture="type: wall; repeat: 0.54; repeatY: 1" material="roughness: 1; side: double"></a-plane>
   <a-plane width="3.2" height="0.9" position="0 0.45 -3.5"
-           canvas-texture="type: wall; repeat: 1; repeatY: 1" material="roughness: 1"></a-plane>
+           canvas-texture="type: wall; repeat: 0.91; repeatY: 0.3" material="roughness: 1; side: double"></a-plane>
   <a-plane width="3.2" height="0.3" position="0 2.85 -3.5"
-           canvas-texture="type: wall; repeat: 1; repeatY: 1" material="roughness: 1"></a-plane>
-  <a-plane width="7" height="3" position="0 1.5 3.5" rotation="0 180 0"
-           canvas-texture="type: wall; repeat: 2; repeatY: 1" material="roughness: 1"></a-plane>
+           canvas-texture="type: wall; repeat: 0.91; repeatY: 0.1" material="roughness: 1; side: double"></a-plane>
   <a-plane width="7" height="3" position="-3.5 1.5 0" rotation="0 90 0"
-           canvas-texture="type: wall; repeat: 2; repeatY: 1" material="roughness: 1"></a-plane>
+           canvas-texture="type: wall; repeat: 2; repeatY: 1" material="roughness: 1; side: double"></a-plane>
   <a-plane width="7" height="3" position="3.5 1.5 0" rotation="0 -90 0"
-           canvas-texture="type: wall; repeat: 2; repeatY: 1" material="roughness: 1"></a-plane>
-  <!-- skirting boards -->
+           canvas-texture="type: wall; repeat: 2; repeatY: 1" material="roughness: 1; side: double"></a-plane>
+  <!-- south side is OPEN to the meadow: header beam + porch posts + deck + step -->
+  <a-box width="7" height="0.18" depth="0.12" position="0 2.91 3.5" color="#F2E9D8"></a-box>
+  <a-box width="0.14" height="3" depth="0.14" position="-3.43 1.5 3.43" color="#8B5E3C"></a-box>
+  <a-box width="0.14" height="3" depth="0.14" position="3.43 1.5 3.43" color="#8B5E3C"></a-box>
+  <a-box width="7" height="0.12" depth="2.4" position="0 0.06 4.7" color="#8B5E3C"></a-box>
+  <a-box width="3" height="0.08" depth="0.8" position="0 0.04 6.1" color="#7A4E30"></a-box>
+  <!-- skirting boards (interior walls only) -->
   <a-box width="7" height="0.12" depth="0.04" position="0 0.06 -3.48" color="#8B5E3C"></a-box>
-  <a-box width="7" height="0.12" depth="0.04" position="0 0.06 3.48" color="#8B5E3C"></a-box>
   <a-box width="0.04" height="0.12" depth="7" position="-3.48 0.06 0" color="#8B5E3C"></a-box>
   <a-box width="0.04" height="0.12" depth="7" position="3.48 0.06 0" color="#8B5E3C"></a-box>
 
@@ -1147,13 +1258,24 @@ AFRAME.registerComponent('desktop-controls', {
   <a-box width="3.2" height="0.05" depth="0.04" position="0 1.8 -3.47" color="#F2E9D8"></a-box>
   <a-box width="3.44" height="0.06" depth="0.12" position="0 0.83 -3.44" color="#F2E9D8"></a-box>
 
-  <!-- OPEN WORLD outside: unlit planes only, no extra lights, +5 draw calls -->
-  <a-plane rotation="-90 0 0" width="34" height="24" position="0 -0.02 -15.49"
-           canvas-texture="type: grass; repeat: 10; repeatY: 7"></a-plane>
-  <a-plane width="44" height="14" position="0 5 -25" canvas-texture="type: pano"></a-plane>
-  <a-plane width="1.4" height="1.9" position="1.9 0.95 -6.5" canvas-texture="type: tree"></a-plane>
-  <a-plane width="1.8" height="2.4" position="-3.1 1.2 -9" canvas-texture="type: tree"></a-plane>
-  <a-plane width="2.2" height="2.8" position="3.6 1.4 -12" canvas-texture="type: tree"></a-plane>
+  <!-- OPEN WORLD: 360° sky dome + horizon-fading grass + instanced nature.
+       Fog merges the grass edge into the sky, so there is no visible world border. -->
+  <a-sky radius="200" canvas-texture="type: sky360"></a-sky>
+  <a-plane rotation="-90 0 0" width="300" height="300" position="0 -0.02 0"
+           canvas-texture="type: grass; repeat: 75; repeatY: 75" material="roughness: 1; metalness: 0"></a-plane>
+  <a-entity trees></a-entity>
+  <a-entity meadow></a-entity>
+  <a-entity position="0 1.1 14" dust-motes="n: 140; bx: 34; by: 4; bz: 34; size: 0.05; color: #FFCF6E; opacity: 0.6"></a-entity>
+  <!-- dirt footpath leading out of the room, curving into the field -->
+  <a-plane width="2" height="7" rotation="-90 0 0" position="0 0.02 7.2"
+           canvas-texture="type: dirt" material="roughness: 1; transparent: true; depthWrite: false"></a-plane>
+  <a-plane width="2" height="7" rotation="-90 -18 0" position="1.1 0.025 13"
+           canvas-texture="type: dirt" material="roughness: 1; transparent: true; depthWrite: false"></a-plane>
+  <a-plane width="2" height="8" rotation="-90 -34 0" position="2.9 0.03 19.4"
+           canvas-texture="type: dirt" material="roughness: 1; transparent: true; depthWrite: false"></a-plane>
+  <!-- pyramid roof: from outside, the room reads as a little house in the field -->
+  <a-cone radius-bottom="5.5" radius-top="0" height="1.9" segments-radial="4" rotation="0 45 0"
+          position="0 3.95 0" color="#A84436" material="roughness: 1"></a-cone>
 
   <a-plane width="2.6" height="3.4" position="0 1.2 -2.1" rotation="-50 0 0"
            material="shader: flat; color: #FFD9A0; transparent: true; opacity: 0.12; blending: additive; depthWrite: false; side: double"></a-plane>
